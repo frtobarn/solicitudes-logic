@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import os
 import shutil
@@ -11,8 +9,8 @@ from datetime import datetime
 import pytz
 import qrcode
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, legal
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, KeepTogether, Image
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, KeepTogether, Image, PageBreak
 from reportlab.lib.units import mm
 
 # Rutas relativas dentro de Colab
@@ -30,15 +28,15 @@ def limpiar_titulo(tokens, truncar=True):
     pat_dist = re.compile(r'^[A-Z0-9]{2,}$')
 
     skip = 0
-    if tokens[0] in lit_primarios:
+    if tokens and tokens[0] in lit_primarios:
         skip = 1
         if len(tokens) > 1 and pat_lit.match(tokens[1]):
             skip = 2
-    elif pat_num.match(tokens[0]):
+    elif tokens and pat_num.match(tokens[0]):
         skip = 1
         if len(tokens) > 1 and pat_gen.match(tokens[1]):
             skip = 2
-    elif tokens[0] == 'DG':
+    elif tokens and tokens[0] == 'DG':
         skip = 1
         if len(tokens) > 1 and pat_dist.match(tokens[1]):
             skip = 2
@@ -61,7 +59,6 @@ def limpiar_titulo(tokens, truncar=True):
 
 # Función que genera un solo tiquete y lo añade a la lista de elementos
 def generar_tiquet(elements, datos, nombre_bib, fecha_fmt, banner):
-    # Generar QR
     qr_data = f"{datos['Cedula']}\t{datos['Nombre']}\t{datos['Direccion']} {datos['Localidad']} {datos['Barrio']}\t{datos['Telefono']}"
     qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
     qr.add_data(qr_data)
@@ -70,7 +67,6 @@ def generar_tiquet(elements, datos, nombre_bib, fecha_fmt, banner):
     qr_path = f"/content/{datos['Cedula']}_qr.png"
     img_qr.save(qr_path)
 
-    # Preparar imágenes
     logo = Image(RUTA_LOGO)
     scale = 1.6
     logo.drawHeight = (4.5 * mm) * scale
@@ -79,7 +75,6 @@ def generar_tiquet(elements, datos, nombre_bib, fecha_fmt, banner):
     img.drawHeight = 75
     img.drawWidth = 75
 
-    # Datos en tabla
     tabla = [
         [logo, "", "Servicio de préstamo a domicilio", "", ""],
         ["Datos\nde\norigen", "Fecha de alistamiento", fecha_fmt, "", img],
@@ -120,7 +115,6 @@ def generar_tiquet(elements, datos, nombre_bib, fecha_fmt, banner):
 
 # Función principal
 def main():
-    # Argumentos de entrada
     parser = argparse.ArgumentParser(description='Generar tiquetes PDF.')
     parser.add_argument('--inicio',    type=int,   required=True, help='Registro inicial (fila)')
     parser.add_argument('--fin',       type=int,   required=True, help='Registro final (fila)')
@@ -129,23 +123,20 @@ def main():
     parser.add_argument('--banner',    type=str,   required=True, help='Texto de banner o novedades')
     args = parser.parse_args()
 
-    # Fecha y hora actual en GMT-5
     tz = pytz.timezone('America/Bogota')
     now = datetime.now(tz)
     dias = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
     meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
     dia_sem = dias[now.weekday()]
     fecha_fmt = f"{dia_sem} {now.day} de {meses[now.month-1]} de {now.year} a las {now.strftime('%I').lstrip('0')}:{now.strftime('%M')} {now.strftime('%p').lower()}"
-    fecha_fname = f"{now.year}_{meses[now.month-1]}_{now.day}_{dia_sem}_{now.strftime('%I').lstrip('0')}_{now.strftime('%M')}_{now.strftime('%p').lower()}"
+    fname = f"{now.year}_{meses[now.month-1]}_{now.day}_{dia_sem}_{now.strftime('%I').lstrip('0')}_{now.strftime('%M')}_{now.strftime('%p').lower()}"
 
-    # Conexión a Google Sheets
     creds, _ = default()
     gc = gspread.authorize(creds)
     sheet = gc.open_by_key(args.hoja_id).sheet1
-    all_values = sheet.get_all_values()
-    df = pd.DataFrame(all_values[args.inicio-1:args.fin], columns=all_values[1])
+    vals = sheet.get_all_values()
+    df = pd.DataFrame(vals[args.inicio-1:args.fin], columns=vals[1])
 
-    # Procesar registros
     resultados = []
     for _, row in df.iterrows():
         materiales = ""
@@ -154,35 +145,36 @@ def main():
             key = f'MATERIAL {i}'
             if key in row and row[key].strip():
                 count += 1
-                clean = limpiar_titulo(row[key].split(), True)
-                materiales += clean + ' | '
+                materiales += limpiar_titulo(row[key].split(), True) + ' | '
                 if i % 2 == 1:
                     materiales += '\n'
         resultados.append({
-            'Nombre':      row['NOMBRE DE USUARIO'],
-            'Cedula':      row['N° Identificación'],
-            'Direccion':   row['DIRECCIÓN'],
-            'Telefono':    row['N° Telefono'],
-            'Localidad':   row['LOCALIDAD'],
-            'Barrio':      row['BARRIO'],
-            'Biblioteca':  row.get('MATERIAL 9', ''),
-            'Materiales':  materiales.strip('\n '),
-            'Cantidad':    count
+            'Nombre':     row['NOMBRE DE USUARIO'],
+            'Cedula':     row['N° Identificación'],
+            'Direccion':  row['DIRECCIÓN'],
+            'Telefono':   row['N° Telefono'],
+            'Localidad':  row['LOCALIDAD'],
+            'Barrio':     row['BARRIO'],
+            'Biblioteca': row.get('MATERIAL 9',''),
+            'Materiales': materiales.strip('\n '),
+            'Cantidad':   count
         })
 
     df_res = pd.DataFrame(resultados)
 
-    # Generar PDF
-    doc = SimpleDocTemplate(f"{fecha_fname}_tiquetes.pdf", pagesize=letter,
+    doc = SimpleDocTemplate(f"{fname}_tiquetes.pdf", pagesize=letter,
                             leftMargin=0.2*28.35, rightMargin=0.2*28.35,
                             topMargin=0.2*28.35, bottomMargin=0.2*28.35)
     elements = []
-    for _, data in df_res.iterrows():
-        generar_tiquet(elements, data, args.nombre, fecha_fmt, args.banner)
+    for idx, data in enumerate(df_res.iterrows()):
+        generar_tiquet(elements, data[1], args.nombre, fecha_fmt, args.banner)
+        # Insertar salto de página después de cada 4 tiquetes
+        if (idx + 1) % 4 == 0:
+            elements.append(PageBreak())
+
     doc.build(elements)
 
-    # Copiar a Drive
-    generado = f"/content/{fecha_fname}_tiquetes.pdf"
+    generado = f"/content/{fname}_tiquetes.pdf"
     shutil.copy(generado, CARPETA_DESTINO_PDF)
     print("✅ Proceso completado. Archivo generado:", generado)
 
