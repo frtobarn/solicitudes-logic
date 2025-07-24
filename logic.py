@@ -11,7 +11,7 @@ from datetime import datetime
 import pytz
 import qrcode
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, legal
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, KeepTogether, Image
 from reportlab.lib.units import mm
 
