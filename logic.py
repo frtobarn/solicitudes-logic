@@ -141,7 +141,7 @@ def main():
     for _, row in df.iterrows():
         materiales = ""
         count = 0
-        for i in range(1, 10):
+        for i in range(1, 8):
             key = f'MATERIAL {i}'
             if key in row and row[key].strip():
                 count += 1
