@@ -169,7 +169,7 @@ def main():
     for idx, data in enumerate(df_res.iterrows()):
         generar_tiquet(elements, data[1], args.nombre, fecha_fmt, args.banner)
         # Insertar salto de página después de cada 4 tiquetes
-        if (idx + 1) % 4 == 0:
+        if (idx + 1) % 3 == 0:
             elements.append(PageBreak())
 
     doc.build(elements)
